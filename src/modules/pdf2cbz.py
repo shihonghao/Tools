@@ -4,11 +4,17 @@ import zipfile
 from pathlib import Path
 from pdf2image import convert_from_path
 from PIL import Image
+from prompt_toolkit import prompt
+from prompt_toolkit.completion import PathCompleter
+
+def input_path_with_completion(prompt_text):
+    completer = PathCompleter(expanduser=True)
+    return prompt(prompt_text, completer=completer).strip()
 
 def convert_pdf_to_cbz_interactive():
     print("\n📘 PDF 转 CBZ 工具")
-    pdf_input = input("📂 输入 PDF 文件路径或目录：").strip()
-    output_path = input("📁 输出 CBZ 文件或目录路径：").strip()
+    pdf_input = input_path_with_completion("📂 输入 PDF 文件路径或目录：")
+    output_path = input_path_with_completion("📁 输出 CBZ 文件或目录路径：")
     image_format = input("🖼 图像格式 [png/jpg]（默认 png）：").strip().lower() or "png"
     dpi_input = input("🔍 图像 DPI（默认 300）：").strip()
     try:
