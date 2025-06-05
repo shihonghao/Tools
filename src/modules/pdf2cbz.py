@@ -4,9 +4,12 @@ import tempfile
 import zipfile
 from pathlib import Path
 from pdf2image import convert_from_path
+from pdf2image.pdf2image import pdfinfo_from_path
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import PathCompleter
 from prompt_toolkit.patch_stdout import patch_stdout
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
+
 
 def input_path_with_completion(prompt_text):
     session = PromptSession(completer=PathCompleter(expanduser=True))
@@ -16,6 +19,7 @@ def input_path_with_completion(prompt_text):
     except KeyboardInterrupt:
         print("\n⏹ 输入中断，程序退出。")
         sys.exit(0)
+
 
 def convert_pdf_to_cbz_interactive():
     try:
@@ -63,21 +67,63 @@ def convert_pdf_to_cbz_interactive():
         print("\n⏹ 用户中断，程序退出。")
         sys.exit(0)
 
+
 def _convert_single(pdf_path, cbz_path, image_format, dpi):
     print(f"➡️ 开始转换: {pdf_path}")
+
     with tempfile.TemporaryDirectory() as tmp_dir:
-        images = convert_from_path(str(pdf_path), dpi=dpi)
-        for i, img in enumerate(images):
-            print(f"🖼 处理第 {i+1}/{len(images)} 页...", end="\r")
-            img_path = os.path.join(tmp_dir, f"page_{i:03}.{image_format}")
-            if image_format == 'jpg':
-                img = img.convert('RGB')
-            img.save(img_path)
+        try:
+            info = pdfinfo_from_path(str(pdf_path))
+            total_pages = info.get("Pages", 0)
+            if total_pages == 0:
+                raise ValueError("未能获取页数信息。")
+        except Exception as e:
+            print(f"❌ 无法读取 PDF 信息：{e}")
+            return
+
+        failures = []
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeRemainingColumn(),
+            transient=True,
+        ) as progress:
+
+            task = progress.add_task("[green]转换中...", total=total_pages)
+
+            for i in range(1, total_pages + 1):
+                try:
+                    images = convert_from_path(
+                        str(pdf_path),
+                        dpi=dpi,
+                        first_page=i,
+                        last_page=i
+                    )
+                    img = images[0]
+                    if image_format == 'jpg':
+                        img = img.convert('RGB')
+                    img_path = os.path.join(tmp_dir, f"page_{i:03}.{image_format}")
+                    img.save(img_path)
+                except Exception as e:
+                    failures.append((i, str(e)))
+                progress.update(task, advance=1)
+
         cbz_path.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(cbz_path, 'w') as cbz:
             for img_file in sorted(os.listdir(tmp_dir)):
                 cbz.write(os.path.join(tmp_dir, img_file), arcname=img_file)
-    print(f"✅ 成功保存 CBZ：{cbz_path}")
+
+    print(f"\n📦 已保存 CBZ 文件：{cbz_path}")
+    if failures:
+        print(f"⚠️ 有 {len(failures)} 页转换失败：")
+        for page, reason in failures:
+            print(f" - 第 {page} 页失败：{reason}")
+    else:
+        print("✅ 所有页面成功转换。")
+
 
 def main():
     try:
@@ -96,6 +142,7 @@ def main():
     except KeyboardInterrupt:
         print("\n⏹ 用户中断，程序退出。")
         sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
