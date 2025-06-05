@@ -3,6 +3,7 @@ import sys
 import tempfile
 import zipfile
 import logging
+from collections import Counter
 from pathlib import Path
 from pdf2image import convert_from_path
 from pdf2image.pdf2image import pdfinfo_from_path
@@ -35,6 +36,9 @@ def input_path_with_completion(prompt_text):
         sys.exit(0)
 
 def analyze_pdf_recommended_dpi(pdf_path, target_width_inch=8):
+    """
+    通过统计所有图片的推荐 DPI，返回出现频率最高的 DPI 作为整体推荐 DPI。
+    """
     try:
         logger.info(f"自动推荐 DPI 分析中：{pdf_path}")
         doc = fitz.open(str(pdf_path))
@@ -42,21 +46,27 @@ def analyze_pdf_recommended_dpi(pdf_path, target_width_inch=8):
         logger.warning(f"⚠️ 无法打开 PDF 分析 DPI：{e}")
         return 300
 
-    dpi_recommendations = []
+    dpi_counter = Counter()
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
         images = page.get_images(full=True)
-        page_max_dpi = 72
+        if not images:
+            # 如果该页没有图片，默认推荐 72 DPI
+            dpi_counter[72] += 1
         for img in images:
             xref = img[0]
             base_image = doc.extract_image(xref)
             width = base_image["width"]
             recommended_dpi = round(width / target_width_inch)
-            page_max_dpi = max(page_max_dpi, recommended_dpi)
-        logger.info(f"页面 {page_num+1} 推荐 DPI：{page_max_dpi}")
-        dpi_recommendations.append(page_max_dpi)
-    overall_dpi = max(dpi_recommendations) if dpi_recommendations else 300
-    logger.info(f"{pdf_path} 的整体推荐 DPI：{overall_dpi}")
+            dpi_counter[recommended_dpi] += 1
+        logger.info(f"页面 {page_num+1} 推荐 DPI 计数: {dict(dpi_counter)}")
+
+    if not dpi_counter:
+        overall_dpi = 300
+    else:
+        # 返回出现次数最多的 dpi
+        overall_dpi = dpi_counter.most_common(1)[0][0]
+    logger.info(f"{pdf_path} 的整体推荐 DPI（出现频率最高）：{overall_dpi}")
     return overall_dpi
 
 def convert_pdf_to_cbz_interactive():
