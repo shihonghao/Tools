@@ -44,11 +44,17 @@ def convert_pdf_to_cbz_interactive():
             if not pdfs:
                 print("⚠️ 没有找到 PDF 文件。")
                 return
-            for pdf in pdfs:
+            success_count = 0
+            for i, pdf in enumerate(pdfs, start=1):
                 rel = pdf.relative_to(pdf_input).with_suffix('.cbz')
                 out_cbz = output_path / rel
-                _convert_single(pdf, out_cbz, image_format, dpi)
-            print(f"\n✅ 完成 {len(pdfs)} 个 PDF 转换")
+                print(f"\n[{i}/{len(pdfs)}] 处理：{pdf}")
+                try:
+                    _convert_single(pdf, out_cbz, image_format, dpi)
+                    success_count += 1
+                except Exception as e:
+                    print(f"❌ 转换失败：{pdf}\n原因：{e}")
+            print(f"\n✅ 完成 {success_count}/{len(pdfs)} 个 PDF 转换")
 
         else:
             print("❌ 输入路径无效。")
@@ -58,10 +64,11 @@ def convert_pdf_to_cbz_interactive():
         sys.exit(0)
 
 def _convert_single(pdf_path, cbz_path, image_format, dpi):
-    print(f"➡️ 转换: {pdf_path} → {cbz_path}")
+    print(f"➡️ 开始转换: {pdf_path}")
     with tempfile.TemporaryDirectory() as tmp_dir:
         images = convert_from_path(str(pdf_path), dpi=dpi)
         for i, img in enumerate(images):
+            print(f"🖼 处理第 {i+1}/{len(images)} 页...", end="\r")
             img_path = os.path.join(tmp_dir, f"page_{i:03}.{image_format}")
             if image_format == 'jpg':
                 img = img.convert('RGB')
@@ -70,6 +77,7 @@ def _convert_single(pdf_path, cbz_path, image_format, dpi):
         with zipfile.ZipFile(cbz_path, 'w') as cbz:
             for img_file in sorted(os.listdir(tmp_dir)):
                 cbz.write(os.path.join(tmp_dir, img_file), arcname=img_file)
+    print(f"✅ 成功保存 CBZ：{cbz_path}")
 
 def main():
     try:
