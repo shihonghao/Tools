@@ -11,7 +11,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import PathCompleter
 from prompt_toolkit.patch_stdout import patch_stdout
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
-import fitz  # PyMuPDF 用于分析图像 DPI
+import fitz  # PyMuPDF
 
 # 批量转换 JPG 默认质量（1-95）
 BATCH_JPG_QUALITY_DEFAULT = 75
@@ -20,11 +20,10 @@ BATCH_JPG_QUALITY_DEFAULT = 75
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] [%(levelname)s] %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
+
 
 def input_path_with_completion(prompt_text):
     session = PromptSession(completer=PathCompleter(expanduser=True))
@@ -35,10 +34,8 @@ def input_path_with_completion(prompt_text):
         print("\n⏹ 输入中断，程序退出。")
         sys.exit(0)
 
+
 def analyze_pdf_recommended_dpi(pdf_path, target_width_inch=8):
-    """
-    通过统计所有图片的推荐 DPI，返回出现频率最高的 DPI 作为整体推荐 DPI。
-    """
     try:
         logger.info(f"自动推荐 DPI 分析中：{pdf_path}")
         doc = fitz.open(str(pdf_path))
@@ -51,7 +48,6 @@ def analyze_pdf_recommended_dpi(pdf_path, target_width_inch=8):
         page = doc.load_page(page_num)
         images = page.get_images(full=True)
         if not images:
-            # 如果该页没有图片，默认推荐 72 DPI
             dpi_counter[72] += 1
         for img in images:
             xref = img[0]
@@ -61,13 +57,10 @@ def analyze_pdf_recommended_dpi(pdf_path, target_width_inch=8):
             dpi_counter[recommended_dpi] += 1
         logger.info(f"页面 {page_num+1} 推荐 DPI 计数: {dict(dpi_counter)}")
 
-    if not dpi_counter:
-        overall_dpi = 300
-    else:
-        # 返回出现次数最多的 dpi
-        overall_dpi = dpi_counter.most_common(1)[0][0]
+    overall_dpi = dpi_counter.most_common(1)[0][0] if dpi_counter else 300
     logger.info(f"{pdf_path} 的整体推荐 DPI（出现频率最高）：{overall_dpi}")
     return overall_dpi
+
 
 def convert_pdf_to_cbz_interactive():
     try:
@@ -89,7 +82,7 @@ def convert_pdf_to_cbz_interactive():
                 dpi = 300
 
         if pdf_input.is_file():
-            quality = 75  # 单文件默认75
+            quality = 75
             if image_format == 'jpg':
                 quality_input = input("🎚 JPG 图片质量（1-95，默认 75）：").strip()
                 if quality_input.isdigit():
@@ -105,6 +98,11 @@ def convert_pdf_to_cbz_interactive():
                 out_cbz = output_path / pdf_input.with_suffix('.cbz').name
             else:
                 out_cbz = output_path
+
+            if out_cbz.exists():
+                print(f"⏭ 已存在 CBZ 文件，跳过：{out_cbz}")
+                return
+
             _convert_single(pdf_input, out_cbz, image_format, dpi, quality)
 
         elif pdf_input.is_dir():
@@ -114,19 +112,26 @@ def convert_pdf_to_cbz_interactive():
                 print("⚠️ 没有找到 PDF 文件。")
                 return
 
-            quality = BATCH_JPG_QUALITY_DEFAULT  # 批量默认质量
-
+            quality = BATCH_JPG_QUALITY_DEFAULT
             success_count = 0
+
             for i, pdf in enumerate(pdfs, start=1):
                 rel = pdf.relative_to(pdf_input).with_suffix('.cbz')
                 out_cbz = output_path / rel
                 print(f"\n[{i}/{len(pdfs)}] 处理：{pdf}")
+
+                if out_cbz.exists():
+                    print(f"⏭ 已存在 CBZ 文件，跳过：{out_cbz}")
+                    success_count += 1
+                    continue
+
                 try:
                     _convert_single(pdf, out_cbz, image_format, dpi, quality)
                     success_count += 1
                 except Exception as e:
                     logger.exception(f"转换失败：{pdf}\n原因：{e}")
                     print(f"❌ 转换失败：{pdf}\n原因：{e}")
+
             logger.info(f"完成 {success_count}/{len(pdfs)} 个 PDF 转换")
             print(f"\n✅ 完成 {success_count}/{len(pdfs)} 个 PDF 转换")
 
@@ -136,6 +141,7 @@ def convert_pdf_to_cbz_interactive():
     except KeyboardInterrupt:
         print("\n⏹ 用户中断，程序退出。")
         sys.exit(0)
+
 
 def _convert_single(pdf_path, cbz_path, image_format, dpi, jpg_quality):
     print(f"➡️ 开始转换: {pdf_path}")
@@ -203,6 +209,7 @@ def _convert_single(pdf_path, cbz_path, image_format, dpi, jpg_quality):
     else:
         print("✅ 所有页面成功转换。")
 
+
 def main():
     try:
         while True:
@@ -220,6 +227,7 @@ def main():
     except KeyboardInterrupt:
         print("\n⏹ 用户中断，程序退出。")
         sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
