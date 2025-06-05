@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 import zipfile
+import logging
 from pathlib import Path
 from pdf2image import convert_from_path
 from pdf2image.pdf2image import pdfinfo_from_path
@@ -10,6 +11,16 @@ from prompt_toolkit.completion import PathCompleter
 from prompt_toolkit.patch_stdout import patch_stdout
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 import fitz  # PyMuPDF 用于分析图像 DPI
+
+# 设置日志（仅输出到控制台）
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 def input_path_with_completion(prompt_text):
     session = PromptSession(completer=PathCompleter(expanduser=True))
@@ -22,9 +33,10 @@ def input_path_with_completion(prompt_text):
 
 def analyze_pdf_recommended_dpi(pdf_path, target_width_inch=8):
     try:
+        logger.info(f"自动推荐 DPI 分析中：{pdf_path}")
         doc = fitz.open(str(pdf_path))
     except Exception as e:
-        print(f"⚠️ 无法打开 PDF 分析 DPI：{e}")
+        logger.warning(f"⚠️ 无法打开 PDF 分析 DPI：{e}")
         return 300
 
     dpi_recommendations = []
@@ -38,9 +50,10 @@ def analyze_pdf_recommended_dpi(pdf_path, target_width_inch=8):
             width = base_image["width"]
             recommended_dpi = round(width / target_width_inch)
             page_max_dpi = max(page_max_dpi, recommended_dpi)
+        logger.info(f"页面 {page_num+1} 推荐 DPI：{page_max_dpi}")
         dpi_recommendations.append(page_max_dpi)
     overall_dpi = max(dpi_recommendations) if dpi_recommendations else 300
-    print(f"📐 推荐 DPI: {overall_dpi}")
+    logger.info(f"{pdf_path} 的整体推荐 DPI：{overall_dpi}")
     return overall_dpi
 
 def convert_pdf_to_cbz_interactive():
@@ -55,7 +68,7 @@ def convert_pdf_to_cbz_interactive():
         output_path = Path(output_path)
 
         if dpi_input == "auto":
-            dpi = None  # 稍后动态决定
+            dpi = None
         else:
             try:
                 dpi = int(dpi_input)
@@ -70,6 +83,7 @@ def convert_pdf_to_cbz_interactive():
             _convert_single(pdf_input, out_cbz, image_format, dpi)
 
         elif pdf_input.is_dir():
+            logger.info(f"开始批量转换目录：{pdf_input}")
             pdfs = list(pdf_input.rglob("*.pdf"))
             if not pdfs:
                 print("⚠️ 没有找到 PDF 文件。")
@@ -83,7 +97,9 @@ def convert_pdf_to_cbz_interactive():
                     _convert_single(pdf, out_cbz, image_format, dpi)
                     success_count += 1
                 except Exception as e:
+                    logger.exception(f"转换失败：{pdf}\n原因：{e}")
                     print(f"❌ 转换失败：{pdf}\n原因：{e}")
+            logger.info(f"完成 {success_count}/{len(pdfs)} 个 PDF 转换")
             print(f"\n✅ 完成 {success_count}/{len(pdfs)} 个 PDF 转换")
 
         else:
@@ -95,6 +111,7 @@ def convert_pdf_to_cbz_interactive():
 
 def _convert_single(pdf_path, cbz_path, image_format, dpi):
     print(f"➡️ 开始转换: {pdf_path}")
+    logger.info(f"开始转换 PDF：{pdf_path}")
 
     if dpi is None:
         dpi = analyze_pdf_recommended_dpi(pdf_path)
@@ -106,6 +123,7 @@ def _convert_single(pdf_path, cbz_path, image_format, dpi):
             if total_pages == 0:
                 raise ValueError("未能获取页数信息。")
         except Exception as e:
+            logger.exception(f"无法读取 PDF 信息：{e}")
             print(f"❌ 无法读取 PDF 信息：{e}")
             return
 
@@ -136,6 +154,7 @@ def _convert_single(pdf_path, cbz_path, image_format, dpi):
                     img_path = os.path.join(tmp_dir, f"page_{i:03}.{image_format}")
                     img.save(img_path)
                 except Exception as e:
+                    logger.error(f"第 {i} 页转换失败：{e}")
                     failures.append((i, str(e)))
                 progress.update(task, advance=1)
 
@@ -145,6 +164,7 @@ def _convert_single(pdf_path, cbz_path, image_format, dpi):
                 cbz.write(os.path.join(tmp_dir, img_file), arcname=img_file)
 
     print(f"\n📦 已保存 CBZ 文件：{cbz_path}")
+    logger.info(f"已保存 CBZ 文件：{cbz_path}")
     if failures:
         print(f"⚠️ 有 {len(failures)} 页转换失败：")
         for page, reason in failures:
