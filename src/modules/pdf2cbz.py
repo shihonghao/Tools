@@ -22,6 +22,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def input_path_with_completion(prompt_text):
     session = PromptSession(completer=PathCompleter(expanduser=True))
     try:
@@ -30,6 +31,7 @@ def input_path_with_completion(prompt_text):
     except KeyboardInterrupt:
         print("\n⏹ 输入中断，程序退出。")
         sys.exit(0)
+
 
 def analyze_pdf_recommended_dpi(pdf_path, target_width_inch=8):
     try:
@@ -50,11 +52,12 @@ def analyze_pdf_recommended_dpi(pdf_path, target_width_inch=8):
             width = base_image["width"]
             recommended_dpi = round(width / target_width_inch)
             page_max_dpi = max(page_max_dpi, recommended_dpi)
-        logger.info(f"页面 {page_num+1} 推荐 DPI：{page_max_dpi}")
+        logger.info(f"页面 {page_num + 1} 推荐 DPI：{page_max_dpi}")
         dpi_recommendations.append(page_max_dpi)
     overall_dpi = max(dpi_recommendations) if dpi_recommendations else 300
     logger.info(f"{pdf_path} 的整体推荐 DPI：{overall_dpi}")
     return overall_dpi
+
 
 def convert_pdf_to_cbz_interactive():
     try:
@@ -62,18 +65,19 @@ def convert_pdf_to_cbz_interactive():
         pdf_input = input_path_with_completion("📂 输入 PDF 文件路径或目录：")
         output_path = input_path_with_completion("📁 输出 CBZ 文件或目录路径：")
         image_format = input("🖼 图像格式 [png/jpg]（默认 png）：").strip().lower() or "png"
+
         dpi_input = input("🔍 图像 DPI（填 auto 或数字，默认 auto）：").strip().lower()
-
-        pdf_input = Path(pdf_input)
-        output_path = Path(output_path)
-
-        if dpi_input == "auto":
-            dpi = None
+        if dpi_input == "" or dpi_input == "auto":
+            dpi = None  # 自动分析
         else:
             try:
                 dpi = int(dpi_input)
             except ValueError:
-                dpi = 300
+                print("⚠️ 输入 DPI 非法，自动使用推荐 DPI。")
+                dpi = None
+
+        pdf_input = Path(pdf_input)
+        output_path = Path(output_path)
 
         if pdf_input.is_file():
             if output_path.is_dir():
@@ -109,12 +113,14 @@ def convert_pdf_to_cbz_interactive():
         print("\n⏹ 用户中断，程序退出。")
         sys.exit(0)
 
+
 def _convert_single(pdf_path, cbz_path, image_format, dpi):
     print(f"➡️ 开始转换: {pdf_path}")
     logger.info(f"开始转换 PDF：{pdf_path}")
 
     if dpi is None:
         dpi = analyze_pdf_recommended_dpi(pdf_path)
+        print(f"🧠 自动分析推荐 DPI 为：{dpi}")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         try:
@@ -130,12 +136,12 @@ def _convert_single(pdf_path, cbz_path, image_format, dpi):
         failures = []
 
         with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold blue]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeRemainingColumn(),
-            transient=True,
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeRemainingColumn(),
+                transient=True,
         ) as progress:
 
             task = progress.add_task("[green]转换中...", total=total_pages)
@@ -172,6 +178,7 @@ def _convert_single(pdf_path, cbz_path, image_format, dpi):
     else:
         print("✅ 所有页面成功转换。")
 
+
 def main():
     try:
         while True:
@@ -189,6 +196,7 @@ def main():
     except KeyboardInterrupt:
         print("\n⏹ 用户中断，程序退出。")
         sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
